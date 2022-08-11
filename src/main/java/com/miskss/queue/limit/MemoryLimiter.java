@@ -7,24 +7,45 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
+ * 内存大小限制器
+ *
  * @author peter
  * 2022/08/10 10:10
  */
 public class MemoryLimiter {
 
-
+    /**
+     * 用于获取对象的内存大小的工具
+     */
     private final Instrumentation inst;
 
-    private long memoryLimit;
-
+    /**
+     * 使用内存的最大值
+     */
+    private volatile long memoryLimit;
+    /**
+     * 当前已使用的内存
+     */
     private final LongAdder memory = new LongAdder();
 
+    /**
+     * 入列的写锁
+     */
     private final ReentrantLock acquireLock = new ReentrantLock();
 
+    /**
+     * 内存未满的条件。当内存已满 notLimited.await（），当内存未满notLimited.signal()
+     */
     private final Condition notLimited = acquireLock.newCondition();
 
+    /**
+     * 出列的释放锁
+     */
     private final ReentrantLock releaseLock = new ReentrantLock();
 
+    /**
+     * 内存已空条件。当内存已空，无法完成扣减 notEmpty.await()，当内存未空时notEmpty.signal()
+     */
     private final Condition notEmpty = releaseLock.newCondition();
 
     public MemoryLimiter(Instrumentation inst) {
@@ -123,15 +144,17 @@ public class MemoryLimiter {
         if (e == null) {
             throw new NullPointerException();
         }
+        //获取写锁
         acquireLock.lockInterruptibly();
         try {
-            final long sum = memory.sum();
+            //获取入列的对象的大小
             final long objectSize = inst.getObjectSize(e);
-            while (sum + objectSize >= memoryLimit) {
+            while (memory.sum() >= memoryLimit) {
+                //超过最大内存，wait 等待
                 notLimited.await();
             }
             memory.add(objectSize);
-            if (sum < memoryLimit) {
+            if (memory.sum() < memoryLimit) {
                 notLimited.signal();
             }
         } finally {

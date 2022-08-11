@@ -6,12 +6,20 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 防止 {@link  LinkedBlockingQueue} 由于无限长度导致 OOM
- *
- * 通过限制Queue使用的内存大小来防止OOM的发生
- *
- *
  * source: https://github.com/apache/dubbo/pull/9722/files
+ * 防止 {@link  LinkedBlockingQueue} 由于无限长度导致 OOM
+ * 通过限制Queue的使用内存大小来防止OOM的发生
+ * 原理：
+ * 主要通过{@link MemoryLimiter} 来限制使用内存
+ * 1. 入列前通过{@link MemoryLimiter#acquireInterruptibly(Object)}来检查是否已达到内存最大值，
+ * 之后在添加到队列。
+ * 2. 出列后扣减内存占用
+ *
+ * 个人觉得问题点：
+ * 1. {@link MemoryLimiter#releaseInterruptibly(Object)} 扣减内存不需要加锁，
+ * 因为内存的释放是在对象出列之后，是必然要执行的操作，且{@link MemoryLimiter#getCurrentMemory()} 是{@link java.util.concurrent.atomic.LongAdder} 类型
+ * 加减都是线程安全的；
+ * 2. 队列的内存占用可能会超过最大值限制，当对象入列之后，再次修改由可能会导致对象内存占用变大。
  *
  * @author peter
  * 2022/08/10 10:09
